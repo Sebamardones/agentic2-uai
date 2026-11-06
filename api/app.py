@@ -8,6 +8,7 @@ import logging
 import os
 from typing import Literal
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -17,6 +18,8 @@ from src.router.graph import construir_graph
 load_dotenv()
 
 MODELO = os.getenv("MODELO", "gemini-3.5-flash-lite")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
+TELEGRAM_SECRET = os.getenv("TELEGRAM_SECRET", "")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api.app")
@@ -111,9 +114,43 @@ def chat(body: ChatRequest) -> ChatResponse:
 
 @app.post("/telegram", tags=["telegram"], include_in_schema=False)
 async def telegram(request: Request) -> dict:
-    """Webhook de Telegram (se completa en la parte 5). Por ahora acepta cualquier JSON."""
+    """Webhook de Telegram: verifica el secreto, enruta el mensaje y
+    responde al usuario. A Telegram siempre se le responde 200."""
+    # 1. Verificar el secreto del webhook
+    secreto_recibido = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+    if not TELEGRAM_SECRET or secreto_recibido != TELEGRAM_SECRET:
+        raise HTTPException(status_code=403, detail="Secreto de webhook inválido.")
+
+    # 2. Parsear el update
     try:
-        await request.json()
+        update = await request.json()
     except Exception:
-        logger.warning("Webhook /telegram recibió un body que no es JSON válido")
+        logger.warning("/telegram recibió un body que no es JSON válido")
+        return {"ok": True}
+
+    mensaje = update.get("message") or {}
+    texto = mensaje.get("text")
+    chat_id = (mensaje.get("chat") or {}).get("id")
+
+    # 3. Ignorar updates sin texto (fotos, stickers, ediciones, etc.)
+    if not texto or chat_id is None:
+        logger.info("Update de Telegram ignorado (sin texto): %s", update)
+        return {"ok": True}
+
+    # 4. Enrutar y responder al usuario
+    try:
+        estado = graph.invoke(
+            {"mensaje": texto},
+            {"configurable": {"thread_id": str(chat_id)}},
+        )
+        async with httpx.AsyncClient(timeout=30) as cliente:
+            respuesta = await cliente.post(
+                f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+                json={"chat_id": chat_id, "text": estado["respuesta"]},
+            )
+            respuesta.raise_for_status()
+    except Exception:
+        logger.exception("Error procesando update de Telegram (chat_id=%s)", chat_id)
+
+    # 5. Responder 200 a Telegram siempre, haya funcionado o no
     return {"ok": True}
