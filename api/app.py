@@ -6,11 +6,13 @@ cada request. Levantar con: uvicorn api.app:app --reload --port 8000
 
 import logging
 import os
+import secrets
 from typing import Literal
 
 import httpx
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Security
+from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from src.router.graph import construir_graph
@@ -18,6 +20,7 @@ from src.router.graph import construir_graph
 load_dotenv()
 
 MODELO = os.getenv("MODELO", "gemini-3.5-flash-lite")
+API_KEY = os.getenv("API_KEY", "")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 TELEGRAM_SECRET = os.getenv("TELEGRAM_SECRET", "")
 
@@ -39,6 +42,7 @@ app = FastAPI(
 
 # Se compila una sola vez al arrancar la app, no en cada request.
 graph = construir_graph()
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 class ChatRequest(BaseModel):
@@ -82,6 +86,9 @@ def health() -> dict:
             "description": "Mensaje enrutado correctamente.",
             "model": ChatResponse,
         },
+        401: {
+            "description": "Falta la cabecera X-API-Key o la clave es inválida.",
+        },
         422: {
             "description": "Body inválido: falta user_id o texto, o tienen el tipo incorrecto.",
         },
@@ -90,8 +97,17 @@ def health() -> dict:
         },
     },
 )
-def chat(body: ChatRequest) -> ChatResponse:
+def chat(
+    body: ChatRequest,
+    api_key: str | None = Security(api_key_header),
+) -> ChatResponse:
     """Enruta el mensaje del cliente al agente correspondiente."""
+    if not API_KEY or api_key is None or not secrets.compare_digest(api_key, API_KEY):
+        raise HTTPException(
+            status_code=401,
+            detail="Clave de API ausente o inválida.",
+        )
+
     try:
         estado = graph.invoke(
             {"mensaje": body.texto},

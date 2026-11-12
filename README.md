@@ -59,7 +59,7 @@ Desde la raíz del proyecto:
 Ejemplo de `/chat`:
 
 ```bash
-curl.exe -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d "{\"user_id\": \"user-123\", \"texto\": \"¿tienen la polera azul en talla M?\"}"
+curl.exe -X POST http://localhost:8000/chat -H "X-API-Key: TU_API_KEY" -H "Content-Type: application/json" -d "{\"user_id\": \"user-123\", \"texto\": \"¿tienen la polera azul en talla M?\"}"
 ```
 
 Respuesta:
@@ -74,6 +74,32 @@ Respuesta:
 
 También puedes probar con la colección Bruno en `bruno/` (entornos `local` y
 `heroku` incluidos).
+
+## Clave de la API
+
+El endpoint `POST /chat` exige la cabecera `X-API-Key`. `/health` sigue siendo
+público y `/telegram` mantiene su autenticación propia.
+
+Genera una clave aleatoria:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+En local, guarda el resultado en `.env` (no lo subas al repositorio):
+
+```dotenv
+API_KEY=pega-aqui-la-clave-generada
+```
+
+En Heroku, guárdalo como Config Var:
+
+```bash
+heroku config:set API_KEY="pega-aqui-la-clave-generada"
+```
+
+En Swagger (`/docs`), pulsa **Authorize**, introduce la clave en el esquema
+`APIKeyHeader` y luego ejecuta `/chat`.
 
 ## Correr las pruebas
 
@@ -97,7 +123,7 @@ heroku login
 heroku create NOMBRE-DE-TU-APP
 
 # 2. Configurar variables de entorno (NUNCA en el código)
-heroku config:set GOOGLE_API_KEY="tu-clave" MODELO="gemini-3.5-flash-lite"
+heroku config:set GOOGLE_API_KEY="tu-clave" API_KEY="tu-clave-api" MODELO="gemini-3.5-flash-lite"
 heroku config:set TELEGRAM_SECRET="un-secreto-largo-y-aleatorio"
 heroku config:set PUBLIC_URL="https://NOMBRE-DE-TU-APP.herokuapp.com"
 
