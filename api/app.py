@@ -7,6 +7,7 @@ cada request. Levantar con: uvicorn api.app:app --reload --port 8000
 import logging
 import os
 import secrets
+from contextlib import asynccontextmanager
 from typing import Literal
 
 import httpx
@@ -16,6 +17,7 @@ from fastapi.security import APIKeyHeader
 from pydantic import BaseModel, Field
 
 from src.router.graph import construir_graph
+from src.router.tools import abrir_memoria
 
 load_dotenv()
 
@@ -26,6 +28,20 @@ TELEGRAM_SECRET = os.getenv("TELEGRAM_SECRET", "")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api.app")
+
+
+graph = construir_graph()
+TIPO_MEMORIA = "ram"
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    global graph, TIPO_MEMORIA
+    with abrir_memoria() as memoria:
+        graph = construir_graph(memoria.checkpointer)
+        TIPO_MEMORIA = memoria.tipo
+        yield
+
 
 app = FastAPI(
     title="Ecommerce Router API",
@@ -38,10 +54,9 @@ app = FastAPI(
         "(quejas, seguimiento de pedidos, devoluciones, cambios, "
         "garantías) y **generica** (temas ajenos a la tienda)."
     ),
+    lifespan=lifespan,
 )
 
-# Se compila una sola vez al arrancar la app, no en cada request.
-graph = construir_graph()
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -74,7 +89,7 @@ class ChatResponse(BaseModel):
 @app.get("/health", tags=["salud"])
 def health() -> dict:
     """Estado de la API y modelo configurado."""
-    return {"ok": True, "modelo": MODELO}
+    return {"ok": True, "modelo": MODELO, "memoria": TIPO_MEMORIA}
 
 
 @app.post(

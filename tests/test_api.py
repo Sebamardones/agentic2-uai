@@ -25,6 +25,7 @@ def test_health():
     respuesta = client.get("/health")
     assert respuesta.status_code == 200
     assert respuesta.json()["ok"] is True
+    assert respuesta.json()["memoria"] in {"ram", "postgres"}
 
 
 def test_chat_falta_texto_422():

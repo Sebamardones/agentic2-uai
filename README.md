@@ -47,6 +47,31 @@ Desde la raíz del proyecto:
 .venv\Scripts\python.exe main.py router --diagrama
 ```
 
+### Memoria persistente
+
+Si `DATABASE_URL` está configurada, la API y el CLI guardan los checkpoints de
+LangGraph en Postgres. El pool usa entre una y dos conexiones. Si la variable
+no existe o la base no responde durante el arranque, el router continúa con
+memoria RAM y registra el motivo en el log.
+
+```dotenv
+DATABASE_URL=postgresql://usuario:clave@host:5432/base
+```
+
+El mismo hilo puede continuar entre procesos distintos:
+
+```bash
+.venv\Scripts\python.exe main.py router "primer mensaje" --hilo cliente-1
+.venv\Scripts\python.exe main.py router "segundo mensaje" --hilo cliente-1
+```
+
+Para listar los hilos y sus checkpoints, o ver una conversación:
+
+```bash
+.venv\Scripts\python.exe scripts\ver_memoria.py
+.venv\Scripts\python.exe scripts\ver_memoria.py cliente-1
+```
+
 ## Levantar la API
 
 ```bash
@@ -54,7 +79,8 @@ Desde la raíz del proyecto:
 ```
 
 - Swagger UI (probar todo desde el navegador): http://localhost:8000/docs
-- Health check: `curl.exe http://localhost:8000/health`
+- Health check: `curl.exe http://localhost:8000/health` (incluye `memoria`:
+  `ram` o `postgres`)
 
 Ejemplo de `/chat`:
 
@@ -100,6 +126,31 @@ heroku config:set API_KEY="pega-aqui-la-clave-generada"
 
 En Swagger (`/docs`), pulsa **Authorize**, introduce la clave en el esquema
 `APIKeyHeader` y luego ejecuta `/chat`.
+
+## Probar el webhook de n8n en local
+
+El workflow `Webhook → n8n → Agente (texto, voz y GIF)` expone un webhook
+protegido que se puede probar desde una aplicación web local. La interfaz
+permite enviar texto, subir un audio o seleccionar un GIF.
+
+Confirma que `.env` contiene la misma clave configurada en la credencial
+`Header Auth account` de n8n. El probador usa `N8N_WEBHOOK_API_KEY` y, si no
+existe, recurre a `API_KEY`. La URL ya tiene un valor predeterminado, pero se
+puede sobrescribir con:
+
+```dotenv
+N8N_WEBHOOK_API_KEY=pega-aqui-la-clave-del-webhook
+N8N_WEBHOOK_URL=https://sebamardones.app.n8n.cloud/webhook/agente-web-local
+```
+
+Ejecuta desde la raíz:
+
+```bash
+.venv\Scripts\python.exe scripts\webhook_tester.py
+```
+
+Abre http://127.0.0.1:8010. La clave se usa únicamente en el proxy local y no
+se expone al navegador.
 
 ## Correr las pruebas
 

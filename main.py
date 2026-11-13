@@ -2,7 +2,7 @@
 
 Uso:
     python main.py {nombre_agente} "mensaje"
-    python main.py router "¿tienen stock?" --saltos
+    python main.py router "¿tienen stock?" --hilo cliente-1 --saltos
     python main.py router --diagrama
 """
 
@@ -19,7 +19,10 @@ def main() -> None:
                         help="Imprime los nodos por los que pasó el grafo.")
     parser.add_argument("--diagrama", action="store_true",
                         help="Imprime el Mermaid del grafo sin ejecutarlo.")
-    parser.add_argument("--thread-id", default="cli", help="ID de hilo para la memoria.")
+    parser.add_argument(
+        "--hilo", "--thread-id", dest="hilo", default="cli",
+        help="ID de hilo para la memoria.",
+    )
     args = parser.parse_args()
 
     try:
@@ -36,22 +39,23 @@ def main() -> None:
         print("Error: falta el mensaje (o usa --diagrama).", file=sys.stderr)
         sys.exit(1)
 
-    graph = graph_mod.construir_graph()
-    config = {"configurable": {"thread_id": args.thread_id}}
+    with graph_mod.abrir_memoria() as memoria:
+        graph = graph_mod.construir_graph(memoria.checkpointer)
+        config = {"configurable": {"thread_id": args.hilo}}
 
-    if args.saltos:
-        saltos = []
-        for chunk in graph.stream(
-            {"mensaje": args.mensaje}, config, stream_mode="updates"
-        ):
-            saltos.extend(chunk.keys())
-        estado = graph.get_state(config).values
-        print(" → ".join(saltos))
-        print(f"Motivo: {estado['motivo']}")
-        print(f"Respuesta: {estado['respuesta']}")
-    else:
-        estado = graph.invoke({"mensaje": args.mensaje}, config)
-        print(estado["respuesta"])
+        if args.saltos:
+            saltos = []
+            for chunk in graph.stream(
+                {"mensaje": args.mensaje}, config, stream_mode="updates"
+            ):
+                saltos.extend(chunk.keys())
+            estado = graph.get_state(config).values
+            print(" → ".join(saltos))
+            print(f"Motivo: {estado['motivo']}")
+            print(f"Respuesta: {estado['respuesta']}")
+        else:
+            estado = graph.invoke({"mensaje": args.mensaje}, config)
+            print(estado["respuesta"])
 
 
 if __name__ == "__main__":
