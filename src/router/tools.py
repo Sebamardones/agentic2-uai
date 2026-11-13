@@ -14,6 +14,8 @@ from psycopg_pool import ConnectionPool
 
 logger = logging.getLogger("router.memory")
 
+_CHECKPOINT_SETUP_LOCK = 724_181_926
+
 
 @dataclass
 class MemoriaRouter:
@@ -46,8 +48,17 @@ def abrir_memoria() -> Iterator[MemoriaRouter]:
     )
     try:
         pool.open(wait=True, timeout=5)
+        with pool.connection() as connection:
+            connection.execute(
+                "SELECT pg_advisory_lock(%s)", (_CHECKPOINT_SETUP_LOCK,)
+            )
+            try:
+                PostgresSaver(connection).setup()
+            finally:
+                connection.execute(
+                    "SELECT pg_advisory_unlock(%s)", (_CHECKPOINT_SETUP_LOCK,)
+                )
         checkpointer = PostgresSaver(pool)
-        checkpointer.setup()
     except Exception as error:
         pool.close()
         logger.exception(
